@@ -162,14 +162,15 @@ class CreateCommand(BaseCommand):
     def _setup_roles(self, resource_manager: SnowflakeResourceManager) -> bool:
         """Setup required Snowflake roles for data access control."""
         # Get role names from configuration
+        # Create prefixed role names to avoid conflicts
         roles = [
-            self.config.groups.plain_text_groups.upper(),  # AUDITOR
-            self.config.groups.masked_groups.upper(),      # CUSTOMER_SERVICE  
-            self.config.groups.redacted_groups.upper()     # MARKETING
+            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",  # PREFIX_AUDITOR
+            f"{self.prefix}_{self.config.groups.masked_groups.upper()}",      # PREFIX_CUSTOMER_SERVICE  
+            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"     # PREFIX_MARKETING
         ]
         
-        # Create roles
-        success = resource_manager.create_required_roles(roles)
+        # Create roles with config for proper descriptions
+        success = resource_manager.create_required_roles(roles, self.config.groups)
         
         # Grant database access to roles
         if success:
@@ -185,7 +186,7 @@ class CreateCommand(BaseCommand):
             "vault_url": self.config.skyflow.vault_url,
             "vault_id": self.config.skyflow.vault_id,
             "table": self.config.skyflow.table,
-            "table_column": getattr(self.config.skyflow, 'table_column', 'pii_values')
+            "table_column": self.config.skyflow.table_column
         }
         
         return secrets_manager.setup_skyflow_secrets(skyflow_config)
@@ -256,7 +257,8 @@ class CreateCommand(BaseCommand):
     def _create_tokenization_procedure(self, procedure_manager: StoredProcedureManager, substitutions: dict) -> bool:
         """Create the tokenization stored procedure."""
         try:
-            return procedure_manager.setup_tokenization_procedure(self.prefix, substitutions)
+            batch_size = self.config.skyflow.batch_size
+            return procedure_manager.setup_tokenization_procedure(self.prefix, substitutions, batch_size)
         except Exception as e:
             console.print(f"✗ Procedure creation failed: {e}")
             return False
@@ -281,7 +283,7 @@ class CreateCommand(BaseCommand):
         """Execute the tokenization stored procedure."""
         try:
             # Get batch size from config
-            batch_size = getattr(self.config.skyflow, 'batch_size', 25)
+            batch_size = self.config.skyflow.batch_size
             return procedure_manager.execute_tokenization_notebook(self.prefix, batch_size)
         except Exception as e:
             console.print(f"✗ Tokenization execution failed: {e}")
@@ -309,7 +311,13 @@ class CreateCommand(BaseCommand):
         
         table.add_row("Snowflake Database", f"{self.prefix}_database")
         table.add_row("Sample Table", f"{self.prefix}_customer_data")
-        table.add_row("Snowflake Roles", f"{self.config.groups.plain_text_groups.upper()}, {self.config.groups.masked_groups.upper()}, {self.config.groups.redacted_groups.upper()}")
+        # Show the actual prefixed role names that were created
+        prefixed_roles = [
+            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",
+            f"{self.prefix}_{self.config.groups.masked_groups.upper()}",
+            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
+        ]
+        table.add_row("Snowflake Roles", ", ".join(prefixed_roles))
         table.add_row("Snowflake Secret", "SKYFLOW_PAT_TOKEN")
         table.add_row("API Integration", "SKYFLOW_API_INTEGRATION")
         table.add_row("Tokenization Procedure", f"{self.prefix}_TOKENIZE_TABLE")
@@ -324,7 +332,10 @@ class CreateCommand(BaseCommand):
             console.print(f"\n[bold]Dashboard URL:[/bold] {dashboard_url}")
         
         console.print("\n[bold]Next Steps:[/bold]")
-        console.print("1. Grant roles to users: GRANT ROLE AUDITOR TO USER your_user;")
+        console.print(f"1. Grant roles to users:")
+        console.print(f"   GRANT ROLE {self.prefix}_{self.config.groups.plain_text_groups.upper()} TO USER your_user;")
+        console.print(f"   GRANT ROLE {self.prefix}_{self.config.groups.masked_groups.upper()} TO USER your_customer_service;")
+        console.print(f"   GRANT ROLE {self.prefix}_{self.config.groups.redacted_groups.upper()} TO USER your_marketing;")
         console.print("2. Test role-based access by running queries as different users")
         console.print("3. Explore the dashboard to see detokenization in action")
         console.print("4. Use the SQL functions in your own queries and applications")
@@ -443,10 +454,11 @@ class DestroyCommand(BaseCommand):
             
             # Step 9: Delete roles
             console.print("\n[bold blue]Step 9: Cleaning up Snowflake roles[/bold blue]")
+            # Use same prefixed role names as creation
             roles_to_delete = [
-                self.config.groups.plain_text_groups.upper(),  # AUDITOR
-                self.config.groups.masked_groups.upper(),      # CUSTOMER_SERVICE  
-                self.config.groups.redacted_groups.upper()     # MARKETING
+                f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",  # PREFIX_AUDITOR
+                f"{self.prefix}_{self.config.groups.masked_groups.upper()}",      # PREFIX_CUSTOMER_SERVICE  
+                f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"     # PREFIX_MARKETING
             ]
             
             roles_deleted = 0

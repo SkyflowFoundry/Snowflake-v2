@@ -30,15 +30,15 @@ class SkyflowConfig(BaseModel):
     vault_id: str
     pat_token: str
     table: str
-    table_column: str = "pii_values"  # Column name in Skyflow table
-    batch_size: int = 25  # Default batch size
+    table_column: str  # Column name in Skyflow table
+    batch_size: int  # Batch size for processing
 
 
 class GroupConfig(BaseModel):
     """Group mapping configuration."""
-    plain_text_groups: str = "auditor"
-    masked_groups: str = "customer_service"
-    redacted_groups: str = "marketing"
+    plain_text_groups: str
+    masked_groups: str
+    redacted_groups: str
 
 
 class SetupConfig:
@@ -154,8 +154,12 @@ class SetupConfig:
             "SKYFLOW_VAULT_ID": self.skyflow.vault_id,
             "SKYFLOW_VAULT_HOST": self.skyflow.vault_url.replace('https://', '').replace('http://', ''),
             "SKYFLOW_TABLE": self.skyflow.table,
-            "SKYFLOW_TABLE_COLUMN": getattr(self.skyflow, 'table_column', 'pii_values'),
+            "SKYFLOW_TABLE_COLUMN": self.skyflow.table_column,
             "PLAIN_TEXT_GROUPS": self.groups.plain_text_groups,
             "MASKED_GROUPS": self.groups.masked_groups,
-            "REDACTED_GROUPS": self.groups.redacted_groups
+            "REDACTED_GROUPS": self.groups.redacted_groups,
+            # Add prefixed role names for SQL templates
+            "PREFIXED_PLAIN_TEXT_ROLE": f"{prefix}_{self.groups.plain_text_groups.upper()}",
+            "PREFIXED_MASKED_ROLE": f"{prefix}_{self.groups.masked_groups.upper()}",
+            "PREFIXED_REDACTED_ROLE": f"{prefix}_{self.groups.redacted_groups.upper()}"
         }

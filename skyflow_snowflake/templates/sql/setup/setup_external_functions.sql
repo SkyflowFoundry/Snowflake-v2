@@ -150,10 +150,10 @@ AS
 $$
   CASE
     -- Auditors get plain text (full detokenization)
-    WHEN CURRENT_ROLE() = 'AUDITOR' OR CURRENT_ROLE() = 'SYSADMIN' THEN 
+    WHEN CURRENT_ROLE() = '${PREFIXED_PLAIN_TEXT_ROLE}' OR CURRENT_ROLE() = 'SYSADMIN' THEN 
       ${PREFIX}_skyflow_detokenize(val)
     -- Customer service gets masked data (partial redaction)
-    WHEN CURRENT_ROLE() = 'CUSTOMER_SERVICE' THEN 
+    WHEN CURRENT_ROLE() = '${PREFIXED_MASKED_ROLE}' THEN 
       ${PREFIX}_skyflow_detokenize_masked(val)
     -- Marketing and all other users get raw tokens (no API calls)
     ELSE val

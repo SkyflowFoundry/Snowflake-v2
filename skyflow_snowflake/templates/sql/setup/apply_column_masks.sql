@@ -11,10 +11,10 @@ USE SCHEMA ${SCHEMA};
 -- This policy detokenizes based on user role ONLY (no token format checking)
 CREATE OR REPLACE MASKING POLICY ${PREFIX}_pii_mask AS (val VARCHAR) RETURNS VARCHAR ->
   CASE 
-    WHEN CURRENT_ROLE() = 'AUDITOR' OR CURRENT_ROLE() = 'SYSADMIN' THEN
+    WHEN CURRENT_ROLE() = '${PREFIXED_PLAIN_TEXT_ROLE}' OR CURRENT_ROLE() = 'SYSADMIN' THEN
       -- Auditors always see detokenized data (calls Skyflow API or mock)
       ${PREFIX}_skyflow_detokenize(val)
-    WHEN CURRENT_ROLE() = 'CUSTOMER_SERVICE' THEN
+    WHEN CURRENT_ROLE() = '${PREFIXED_MASKED_ROLE}' THEN
       -- Customer service gets masked/redacted version
       ${PREFIX}_skyflow_detokenize_masked(val)
     ELSE 

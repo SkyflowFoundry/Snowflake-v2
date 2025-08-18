@@ -136,29 +136,68 @@ class SnowflakeResourceManager:
             console.print(f"✗ Failed to create role {role_name}: {e}")
             return False
     
-    def create_required_roles(self, roles: List[str]) -> bool:
+    def create_required_roles(self, roles: List[str], group_config=None) -> bool:
         """Create multiple roles needed for the integration."""
         success = True
         
         console.print(f"Creating {len(roles)} required roles...")
         
-        role_descriptions = {
-            'AUDITOR': 'Users who can see detokenized (plain text) PII data',
-            'CUSTOMER_SERVICE': 'Users who see masked/redacted PII data', 
-            'MARKETING': 'Users who only see tokenized PII data'
-        }
-        
         for role_name in roles:
-            comment = role_descriptions.get(role_name.upper(), f'Role for {role_name}')
+            # Determine role type from role name to provide appropriate description
+            comment = f'Role for {role_name}'  # Default
+            
+            if group_config:
+                role_upper = role_name.upper()
+                if group_config.plain_text_groups.upper() in role_upper:
+                    comment = 'Users who can see detokenized (plain text) PII data'
+                elif group_config.masked_groups.upper() in role_upper:
+                    comment = 'Users who see masked/redacted PII data'  
+                elif group_config.redacted_groups.upper() in role_upper:
+                    comment = 'Users who only see tokenized PII data'
+            
             if not self.create_role(role_name, comment):
                 success = False
         
         if success:
             console.print("✓ All required roles created successfully")
+            # Grant roles to current user so they appear in UI
+            self._grant_roles_to_current_user(roles)
         else:
             console.print("⚠ Some role creation failed - check permissions")
             
         return success
+    
+    def _grant_roles_to_current_user(self, roles: List[str]) -> bool:
+        """Grant roles to current user so they appear in Snowflake UI."""
+        try:
+            cursor = self.connection.cursor()
+            current_user = None
+            
+            # Get current user
+            cursor.execute("SELECT CURRENT_USER()")
+            result = cursor.fetchone()
+            if result:
+                current_user = result[0]
+            
+            if not current_user:
+                console.print("⚠ Could not determine current user for role grants")
+                return False
+            
+            # Grant each role to current user
+            for role_name in roles:
+                try:
+                    grant_sql = f"GRANT ROLE {role_name} TO USER {current_user}"
+                    cursor.execute(grant_sql)
+                    console.print(f"  ✓ Granted {role_name} to {current_user}")
+                except Exception as e:
+                    console.print(f"  ⚠ Failed to grant {role_name} to {current_user}: {e}")
+            
+            cursor.close()
+            return True
+            
+        except Exception as e:
+            console.print(f"⚠ Error granting roles to current user: {e}")
+            return False
     
     def grant_database_access_to_roles(self, database_name: str, roles: List[str]) -> bool:
         """Grant database access to the created roles."""

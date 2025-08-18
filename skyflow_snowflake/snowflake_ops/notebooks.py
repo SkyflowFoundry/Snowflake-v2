@@ -19,7 +19,7 @@ class StoredProcedureManager:
         self.connection = connection
         self.wrapper = SnowflakeClientWrapper(connection)
     
-    def create_tokenization_procedure(self, prefix: str, substitutions: dict = None, batch_size: int = 25) -> bool:
+    def create_tokenization_procedure(self, prefix: str, substitutions: dict = None, batch_size: int = None) -> bool:
         """Create Snowflake stored procedure for tokenization using Python and real Skyflow API."""
         try:
             procedure_name = f"{prefix}_TOKENIZE_TABLE"
@@ -32,7 +32,7 @@ class StoredProcedureManager:
             vault_host = substitutions.get('SKYFLOW_VAULT_HOST', 'unknown')
             vault_id = substitutions.get('SKYFLOW_VAULT_ID', 'unknown') 
             skyflow_table = substitutions.get('SKYFLOW_TABLE', 'pii')
-            table_column = substitutions.get('SKYFLOW_TABLE_COLUMN', 'pii_values')
+            table_column = substitutions.get('SKYFLOW_TABLE_COLUMN')
             
             # Create Python stored procedure that makes real Skyflow API calls
             procedure_sql = f"""
@@ -226,11 +226,11 @@ $$
             console.print(f"✗ Failed to execute tokenization procedure: {e}")
             return False
     
-    def setup_tokenization_procedure(self, prefix: str, substitutions: dict = None, batch_size: int = 25) -> bool:
+    def setup_tokenization_procedure(self, prefix: str, substitutions: dict = None, batch_size: int = None) -> bool:
         """Setup and create the tokenization procedure."""
         return self.create_tokenization_procedure(prefix, substitutions, batch_size)
     
-    def execute_tokenization_notebook(self, prefix: str, batch_size: int = 25) -> bool:
+    def execute_tokenization_notebook(self, prefix: str, batch_size: int = None) -> bool:
         """Execute tokenization (renamed for compatibility).""" 
         return self.execute_tokenization_procedure(prefix)
     
