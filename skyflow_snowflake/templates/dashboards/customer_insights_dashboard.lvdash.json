@@ -1,0 +1,405 @@
+{
+    "datasets": [
+        {
+            "name": "${PREFIX}_customer_dataset",
+            "displayName": "Customer Data",
+            "query": "SELECT\n    customer_id,\n    first_name,\n    last_name,\n    email,\n    phone_number,\n    address,\n    date_of_birth,\n    signup_date,\n    last_login,\n    total_purchases,\n    total_spent,\n    loyalty_status,\n    preferred_language,\n    consent_marketing,\n    consent_data_sharing\nFROM ${PREFIX}_catalog.default.${PREFIX}_customer_data;"
+        }
+    ],
+    "pages": [
+        {
+            "name": "customer_insights",
+            "displayName": "Customer Insights Dashboard",
+            "layout": [
+                {
+                    "widget": {
+                        "name": "header",
+                        "textbox_spec": "\n# Customer Data Platform Insights\nSecure view of customer data with tokenized PII fields\n"
+                    },
+                    "position": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 12,
+                        "height": 1
+                    }
+                },
+                {
+                    "widget": {
+                        "name": "customer_overview",
+                        "queries": [
+                            {
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "${PREFIX}_customer_dataset",
+                                    "fields": [
+                                        {
+                                            "name": "customer_id",
+                                            "expression": "`customer_id`"
+                                        },
+                                        {
+                                            "name": "first_name",
+                                            "expression": "`first_name`"
+                                        },
+                                        {
+                                            "name": "last_name",
+                                            "expression": "`last_name`"
+                                        },
+                                        {
+                                            "name": "email",
+                                            "expression": "`email`"
+                                        },
+                                        {
+                                            "name": "phone_number",
+                                            "expression": "`phone_number`"
+                                        },
+                                        {
+                                            "name": "date_of_birth",
+                                            "expression": "`date_of_birth`"
+                                        },
+                                        {
+                                            "name": "preferred_language",
+                                            "expression": "`preferred_language`"
+                                        },
+                                        {
+                                            "name": "total_purchases",
+                                            "expression": "`total_purchases`"
+                                        },
+                                        {
+                                            "name": "total_spent",
+                                            "expression": "`total_spent`"
+                                        },
+                                        {
+                                            "name": "monthly(last_login)",
+                                            "expression": "DATE_TRUNC(\"MONTH\", `last_login`)"
+                                        },
+                                        {
+                                            "name": "monthly(signup_date)",
+                                            "expression": "DATE_TRUNC(\"MONTH\", `signup_date`)"
+                                        },
+                                        {
+                                            "name": "consent_data_sharing",
+                                            "expression": "`consent_data_sharing`"
+                                        },
+                                        {
+                                            "name": "consent_marketing",
+                                            "expression": "`consent_marketing`"
+                                        }
+                                    ],
+                                    "disaggregated": true
+                                }
+                            }
+                        ],
+                        "spec": {
+                            "version": 2,
+                            "widgetType": "table",
+                            "encodings": {
+                                "columns": [
+                                    {
+                                        "fieldName": "customer_id",
+                                        "displayName": "customer_id"
+                                    },
+                                    {
+                                        "fieldName": "first_name",
+                                        "displayName": "first_name"
+                                    },
+                                    {
+                                        "fieldName": "last_name",
+                                        "displayName": "last_name"
+                                    },
+                                    {
+                                        "fieldName": "email",
+                                        "displayName": "email"
+                                    },
+                                    {
+                                        "fieldName": "phone_number",
+                                        "displayName": "phone_number"
+                                    },
+                                    {
+                                        "fieldName": "date_of_birth",
+                                        "displayName": "date_of_birth"
+                                    },
+                                    {
+                                        "fieldName": "preferred_language",
+                                        "displayName": "preferred_language"
+                                    },
+                                    {
+                                        "fieldName": "total_purchases",
+                                        "displayName": "total_purchases"
+                                    },
+                                    {
+                                        "fieldName": "total_spent",
+                                        "displayName": "total_spent"
+                                    },
+                                    {
+                                        "fieldName": "monthly(last_login)",
+                                        "displayName": "last_login"
+                                    },
+                                    {
+                                        "fieldName": "monthly(signup_date)",
+                                        "displayName": "signup_date"
+                                    },
+                                    {
+                                        "fieldName": "consent_data_sharing",
+                                        "displayName": "consent_data_sharing"
+                                    },
+                                    {
+                                        "fieldName": "consent_marketing",
+                                        "displayName": "consent_marketing"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "position": {
+                        "x": 0,
+                        "y": 1,
+                        "width": 12,
+                        "height": 4
+                    }
+                },
+                {
+                    "widget": {
+                        "name": "loyalty_purchases",
+                        "queries": [
+                            {
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "${PREFIX}_customer_dataset",
+                                    "fields": [
+                                        {
+                                            "name": "loyalty_status",
+                                            "expression": "`loyalty_status`"
+                                        },
+                                        {
+                                            "name": "avg(total_purchases)",
+                                            "expression": "AVG(`total_purchases`)"
+                                        }
+                                    ],
+                                    "disaggregated": false
+                                }
+                            }
+                        ],
+                        "spec": {
+                            "version": 3,
+                            "widgetType": "bar",
+                            "encodings": {
+                                "x": {
+                                    "fieldName": "loyalty_status",
+                                    "scale": {
+                                        "type": "categorical",
+                                        "sort": {
+                                            "by": "y-reversed"
+                                        }
+                                    },
+                                    "displayName": "loyalty_status"
+                                },
+                                "y": {
+                                    "fieldName": "avg(total_purchases)",
+                                    "scale": {
+                                        "type": "quantitative"
+                                    },
+                                    "displayName": "Average total_purchases"
+                                }
+                            },
+                            "frame": {
+                                "title": "Average Purchases by Loyalty Status",
+                                "showTitle": true
+                            }
+                        }
+                    },
+                    "position": {
+                        "x": 0,
+                        "y": 11,
+                        "width": 6,
+                        "height": 4
+                    }
+                },
+                {
+                    "widget": {
+                        "name": "587e3bc7",
+                        "queries": [
+                            {
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "${PREFIX}_customer_dataset",
+                                    "fields": [
+                                        {
+                                            "name": "avg(total_purchases)",
+                                            "expression": "AVG(`total_purchases`)"
+                                        },
+                                        {
+                                            "name": "consent_marketing",
+                                            "expression": "`consent_marketing`"
+                                        }
+                                    ],
+                                    "disaggregated": false
+                                }
+                            }
+                        ],
+                        "spec": {
+                            "version": 3,
+                            "widgetType": "pie",
+                            "encodings": {
+                                "angle": {
+                                    "fieldName": "avg(total_purchases)",
+                                    "scale": {
+                                        "type": "quantitative"
+                                    },
+                                    "displayName": "Average total_purchases"
+                                },
+                                "color": {
+                                    "fieldName": "consent_marketing",
+                                    "scale": {
+                                        "type": "categorical"
+                                    },
+                                    "displayName": "consent_marketing"
+                                },
+                                "label": {
+                                    "show": true
+                                }
+                            },
+                            "frame": {
+                                "title": "Average Purchases by Consent Marketing",
+                                "showTitle": true
+                            }
+                        }
+                    },
+                    "position": {
+                        "x": 4,
+                        "y": 5,
+                        "width": 2,
+                        "height": 6
+                    }
+                },
+                {
+                    "widget": {
+                        "name": "39ddb2ca",
+                        "queries": [
+                            {
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "${PREFIX}_customer_dataset",
+                                    "fields": [
+                                        {
+                                            "name": "avg(total_purchases)",
+                                            "expression": "AVG(`total_purchases`)"
+                                        },
+                                        {
+                                            "name": "consent_data_sharing",
+                                            "expression": "`consent_data_sharing`"
+                                        }
+                                    ],
+                                    "disaggregated": false
+                                }
+                            }
+                        ],
+                        "spec": {
+                            "version": 3,
+                            "widgetType": "pie",
+                            "encodings": {
+                                "angle": {
+                                    "fieldName": "avg(total_purchases)",
+                                    "scale": {
+                                        "type": "quantitative"
+                                    },
+                                    "displayName": "Average total_purchases"
+                                },
+                                "color": {
+                                    "fieldName": "consent_data_sharing",
+                                    "scale": {
+                                        "type": "categorical"
+                                    },
+                                    "displayName": "consent_data_sharing"
+                                },
+                                "label": {
+                                    "show": true
+                                }
+                            },
+                            "frame": {
+                                "title": "Average Purchases by Consent Data Sharing",
+                                "showTitle": true
+                            }
+                        }
+                    },
+                    "position": {
+                        "x": 0,
+                        "y": 5,
+                        "width": 2,
+                        "height": 6
+                    }
+                },
+                {
+                    "widget": {
+                        "name": "3ff7bd34",
+                        "queries": [
+                            {
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "${PREFIX}_customer_dataset",
+                                    "fields": [
+                                        {
+                                            "name": "avg(total_purchases)",
+                                            "expression": "AVG(`total_purchases`)"
+                                        },
+                                        {
+                                            "name": "loyalty_status",
+                                            "expression": "`loyalty_status`"
+                                        }
+                                    ],
+                                    "disaggregated": false
+                                }
+                            }
+                        ],
+                        "spec": {
+                            "version": 3,
+                            "widgetType": "pie",
+                            "encodings": {
+                                "angle": {
+                                    "fieldName": "avg(total_purchases)",
+                                    "scale": {
+                                        "type": "quantitative"
+                                    },
+                                    "displayName": "Average total_purchases"
+                                },
+                                "color": {
+                                    "fieldName": "loyalty_status",
+                                    "scale": {
+                                        "type": "categorical",
+                                        "mappings": [
+                                            {
+                                                "value": "Silver",
+                                                "color": "#919191"
+                                            },
+                                            {
+                                                "value": "Platinum",
+                                                "color": "#99DDB4"
+                                            },
+                                            {
+                                                "value": "Diamond",
+                                                "color": "#8BCAE7"
+                                            }
+                                        ]
+                                    },
+                                    "displayName": "loyalty_status"
+                                },
+                                "label": {
+                                    "show": true
+                                }
+                            },
+                            "frame": {
+                                "title": "Average Total Purchases by Loyalty Status",
+                                "showTitle": true
+                            }
+                        }
+                    },
+                    "position": {
+                        "x": 2,
+                        "y": 5,
+                        "width": 2,
+                        "height": 6
+                    }
+                }
+            ]
+        }
+    ]
+}
