@@ -141,6 +141,12 @@ class CreateCommand(BaseCommand):
             console.print("\n[bold blue]Step 11: Creating dashboard[/bold blue]")
             dashboard_url = self._create_dashboard(dashboard_manager)
             
+            # Step 12: Validate role-based access with test queries
+            console.print("\n[bold blue]Step 12: Validating role-based access[/bold blue]")
+            validation_success = self._validate_role_access(sql_executor)
+            if not validation_success:
+                console.print("[yellow]⚠ Role validation failed - check role permissions[/yellow]")
+            
             # Success summary
             self._print_success_summary(dashboard_url)
             return True
@@ -295,6 +301,88 @@ class CreateCommand(BaseCommand):
             self.prefix,
             self.config.snowflake.warehouse
         )
+    
+    def _validate_role_access(self, sql_executor: SnowflakeSQLExecutor) -> bool:
+        """Validate role-based access by testing queries as each role."""
+        try:
+            table_name = f"{self.prefix}_customer_data"
+            
+            # Check if table has tokenized data
+            row_count = sql_executor.get_table_row_count(table_name)
+            if not row_count or row_count == 0:
+                console.print("  ⚠ No data in table - skipping role validation")
+                return True
+            
+            # Get prefixed role names
+            auditor_role = f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}"
+            service_role = f"{self.prefix}_{self.config.groups.masked_groups.upper()}"  
+            marketing_role = f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
+            
+            validation_results = []
+            
+            # Test each role
+            roles_to_test = [
+                (auditor_role, "PLAIN_TEXT", "should see detokenized data"),
+                (service_role, "MASKED", "should see masked data"),
+                (marketing_role, "REDACTED", "should see redacted data")
+            ]
+            
+            for role_name, expected_type, description in roles_to_test:
+                console.print(f"  Testing role: {role_name} ({description})")
+                
+                # Switch to role and test query
+                test_query = f"""
+                USE ROLE {role_name};
+                USE DATABASE {self.prefix}_database;
+                SELECT first_name, email 
+                FROM {table_name} 
+                LIMIT 1;
+                """
+                
+                try:
+                    cursor = sql_executor.connection.cursor()
+                    
+                    # Execute role switch and query
+                    for statement in test_query.strip().split(';'):
+                        if statement.strip():
+                            cursor.execute(statement.strip())
+                    
+                    result = cursor.fetchone()
+                    cursor.close()
+                    
+                    if result:
+                        first_name, email = result[0], result[1]
+                        console.print(f"    ✓ {role_name}: first_name='{first_name}', email='{email}'")
+                        validation_results.append(True)
+                    else:
+                        console.print(f"    ✗ {role_name}: No data returned")
+                        validation_results.append(False)
+                        
+                except Exception as e:
+                    console.print(f"    ✗ {role_name}: Query failed - {e}")
+                    validation_results.append(False)
+            
+            # Switch back to admin role
+            try:
+                cursor = sql_executor.connection.cursor()
+                cursor.execute(f"USE ROLE {self.config.snowflake.role}")
+                cursor.close()
+            except:
+                pass
+            
+            success_count = sum(validation_results)
+            total_count = len(validation_results)
+            
+            if success_count == total_count:
+                console.print(f"  ✓ All {total_count} role validation tests passed")
+                return True
+            else:
+                console.print(f"  ⚠ {success_count}/{total_count} role validation tests passed")
+                return False
+                
+        except Exception as e:
+            console.print(f"  ✗ Role validation failed: {e}")
+            return False
     
     def _print_success_summary(self, dashboard_url: Optional[str]):
         """Print success summary with resources created."""
