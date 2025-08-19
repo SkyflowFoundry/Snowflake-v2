@@ -32,8 +32,8 @@ This solution provides secure data tokenization and detokenization capabilities 
 
 1. **Clone and Configure**:
    ```bash
-   git clone <repository>
-   cd Snowflake
+   git clone https://github.com/SkyflowFoundry/Snowflake-v2
+   cd Snowflake-v2
    cp .env.local.example .env.local
    ```
 
@@ -425,8 +425,13 @@ Comprehensively removes all Snowflake resources with validation:
 
 - **Skyflow Documentation**: [docs.skyflow.com](https://docs.skyflow.com)
 - **Snowflake Documentation**: [docs.snowflake.com](https://docs.snowflake.com/)
-- **GitHub Issues**: Please use the repository issue tracker
+- **SkyflowFoundry**: [github.com/SkyflowFoundry](https://github.com/SkyflowFoundry) - Community-driven solutions and integrations
+- **GitHub Issues**: Please use the repository issue tracker for bugs and feature requests
 
 ## License
 
-This project is provided as sample code for demonstration purposes. Not recommended for production deployment without further review, testing, and hardening.
+This project is licensed under the [MIT License](LICENSE).
+
+**Community Contribution**: This solution is part of [SkyflowFoundry](https://github.com/SkyflowFoundry), a community-driven initiative providing production-ready integrations and solutions for Skyflow Data Privacy Vault.
+
+**Production Readiness**: While this solution includes enterprise-grade features and has been tested with production workloads, please review and test thoroughly in your environment before production deployment.
