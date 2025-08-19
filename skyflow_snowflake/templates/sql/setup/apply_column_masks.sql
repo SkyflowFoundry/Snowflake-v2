@@ -1,6 +1,6 @@
 -- Apply Snowflake Data Masking Policies to PII columns for role-based access
 -- Snowflake RBAC with masking policies for role-based data access
--- Role-based access: AUDITOR sees detokenized, CUSTOMER_SERVICE sees masked, others see tokens
+-- Role-based access: Prefixed auditor role sees detokenized, customer service sees masked, others see tokens
 
 -- Set database context
 USE DATABASE ${PREFIX}_database;
@@ -12,13 +12,13 @@ USE SCHEMA ${SCHEMA};
 CREATE OR REPLACE MASKING POLICY ${PREFIX}_pii_mask AS (val VARCHAR) RETURNS VARCHAR ->
   CASE 
     WHEN CURRENT_ROLE() IN ('${PREFIXED_PLAIN_TEXT_ROLE}', 'SYSADMIN') THEN
-      -- Auditors always see detokenized data (calls Skyflow API)
+      -- Plain text role sees detokenized data (calls Skyflow API)
       ${PREFIX}_skyflow_detokenize(val, 'PLAIN_TEXT', CURRENT_USER())
     WHEN CURRENT_ROLE() IN ('${PREFIXED_MASKED_ROLE}') THEN
-      -- Customer service gets masked/redacted version  
+      -- Masked role gets masked/redacted version  
       ${PREFIX}_skyflow_detokenize(val, 'MASKED', CURRENT_USER())
     WHEN CURRENT_ROLE() IN ('${PREFIXED_REDACTED_ROLE}') THEN
-      -- Marketing gets redacted version
+      -- Redacted role gets redacted version
       ${PREFIX}_skyflow_detokenize(val, 'REDACTED', CURRENT_USER())
     ELSE 
       -- All other roles see raw tokens (no detokenization)

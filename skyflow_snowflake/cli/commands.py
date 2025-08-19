@@ -170,9 +170,9 @@ class CreateCommand(BaseCommand):
         # Get role names from configuration
         # Create prefixed role names to avoid conflicts
         roles = [
-            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",  # PREFIX_AUDITOR
-            f"{self.prefix}_{self.config.groups.masked_groups.upper()}",      # PREFIX_CUSTOMER_SERVICE  
-            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"     # PREFIX_MARKETING
+            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",
+            f"{self.prefix}_{self.config.groups.masked_groups.upper()}",
+            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
         ]
         
         # Create roles with config for proper descriptions
@@ -314,17 +314,17 @@ class CreateCommand(BaseCommand):
                 return True
             
             # Get prefixed role names
-            auditor_role = f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}"
-            service_role = f"{self.prefix}_{self.config.groups.masked_groups.upper()}"  
-            marketing_role = f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
+            plain_text_role = f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}"
+            masked_role = f"{self.prefix}_{self.config.groups.masked_groups.upper()}"  
+            redacted_role = f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
             
             validation_results = []
             
             # Test each role
             roles_to_test = [
-                (auditor_role, "PLAIN_TEXT", "should see detokenized data"),
-                (service_role, "MASKED", "should see masked data"),
-                (marketing_role, "REDACTED", "should see redacted data")
+                (plain_text_role, "PLAIN_TEXT", "should see detokenized data"),
+                (masked_role, "MASKED", "should see masked data"),
+                (redacted_role, "REDACTED", "should see redacted data")
             ]
             
             for role_name, expected_type, description in roles_to_test:
@@ -401,9 +401,9 @@ class CreateCommand(BaseCommand):
         table.add_row("Sample Table", f"{self.prefix}_customer_data")
         # Show the actual prefixed role names that were created
         prefixed_roles = [
-            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}",
-            f"{self.prefix}_{self.config.groups.masked_groups.upper()}",
-            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}"
+            f"{self.prefix}_{self.config.groups.plain_text_groups.upper()}".upper(),
+            f"{self.prefix}_{self.config.groups.masked_groups.upper()}".upper(),
+            f"{self.prefix}_{self.config.groups.redacted_groups.upper()}".upper()
         ]
         table.add_row("Snowflake Roles", ", ".join(prefixed_roles))
         table.add_row("Snowflake Secret", "SKYFLOW_PAT_TOKEN")

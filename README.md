@@ -2,6 +2,15 @@
 
 This solution provides secure data tokenization and detokenization capabilities in Snowflake to protect PII and other sensitive data using Skyflow's Data Privacy Vault services. Built with Snowflake external functions, masking policies, and role-based access control (RBAC) for maximum performance and seamless integration with Snowflake's security features.
 
+**✅ Production-Ready Features:**
+- **High-Performance Tokenization**: CTAS+SWAP atomic tokenization approach with zero downtime
+- **Role-Based Data Access**: Automatic detokenization, masking, or redaction based on Snowflake roles
+- **Unified Architecture**: Single external function handles all redaction modes (PLAIN_TEXT, MASKED, REDACTED)  
+- **Prefixed Resource Management**: Avoid naming conflicts with environment-specific prefixes
+- **Scalable Batch Processing**: Configurable batch size with efficient API call optimization
+- **Comprehensive Validation**: Built-in role access testing during setup
+- **Complete Cleanup**: Thorough destroy command removes all resources
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -58,11 +67,13 @@ This solution provides secure data tokenization and detokenization capabilities 
 
    This creates:
    - ✅ Snowflake Database: `demo_database` 
-   - ✅ Required Snowflake roles (AUDITOR, CUSTOMER_SERVICE, MARKETING)
-   - ✅ Sample table with tokenized records
-   - ✅ Snowflake secrets and API integrations
-   - ✅ External functions for detokenization (mock implementation)
-   - ✅ Masking policies on 6 PII columns with role-based access
+   - ✅ Prefixed Snowflake roles: `DEMO_AUDITOR`, `DEMO_CUSTOMER_SERVICE`, `DEMO_MARKETING`
+   - ✅ Sample table with tokenized PII data using CTAS+SWAP approach
+   - ✅ Skyflow API integration with external access configuration
+   - ✅ CTAS+SWAP stored procedure: `demo_TOKENIZE_TABLE` for scalable batch tokenization
+   - ✅ Unified external function: `demo_skyflow_detokenize(token, mode, user_context)`
+   - ✅ Role-based masking policies on 6 PII columns
+   - ✅ Comprehensive role validation testing
    - ✅ Customer insights dashboard views
 
 4. **Test Role-Based Access**:
@@ -77,17 +88,22 @@ This solution provides secure data tokenization and detokenization capabilities 
        CURRENT_ROLE() AS role,
        CURRENT_WAREHOUSE() AS warehouse;
    
-   -- Test role switching (must have appropriate grants)
-   USE ROLE AUDITOR;
-   SELECT first_name FROM demo_customer_data LIMIT 1; -- Should see plain text
+   -- Test role switching with prefixed role names (must have appropriate grants)
+   USE ROLE DEMO_AUDITOR;
+   SELECT first_name FROM demo_customer_data LIMIT 1; -- Returns: "Jonathan" (detokenized)
    
-   USE ROLE CUSTOMER_SERVICE; 
-   SELECT first_name FROM demo_customer_data LIMIT 1; -- Should see masked data
+   USE ROLE DEMO_CUSTOMER_SERVICE; 
+   SELECT first_name FROM demo_customer_data LIMIT 1; -- Returns: "J***an" (masked)
+   
+   USE ROLE DEMO_MARKETING;
+   SELECT first_name FROM demo_customer_data LIMIT 1; -- Returns: "*REDACTED*" (redacted)
    ```
 
 ## Key Benefits
 
 - **🚀 Native Snowflake Performance**: Built with Snowflake external functions and SQL UDFs
+- **⚡ Zero-Downtime Tokenization**: CTAS+SWAP atomic operations ensure continuous data availability
+- **📈 Scalable Processing**: Configurable batch sizes with optimized API call patterns
 - **🔒 Role-Based Security**: Automatic data masking via Snowflake masking policies and RBAC
 - **⚡ Serverless Ready**: Works seamlessly with Snowflake's serverless architecture
 - **🔧 Easy Integration**: Native Snowflake functions work with any SQL client or tool
@@ -96,13 +112,15 @@ This solution provides secure data tokenization and detokenization capabilities 
 
 ## Role-Based Data Access
 
-The solution supports three role-based access levels:
+The solution supports three role-based access levels with prefixed role names:
 
 | Role | Snowflake Role | Data Visibility | Example Output |
 |------|----------------|----------------|----------------|
-| **Auditor** | `AUDITOR` | **Plain text** (detokenized) | `Jonathan` |
-| **Customer Service** | `CUSTOMER_SERVICE` | **Masked** (partial hiding) | `J****an` |
-| **Marketing** | `MARKETING` | **Token** (no access) | `4532-8765-9abc-def0` |
+| **Auditor** | `{PREFIX}_AUDITOR` | **Plain text** (detokenized) | `Jonathan` |
+| **Customer Service** | `{PREFIX}_CUSTOMER_SERVICE` | **Masked** (partial hiding) | `J***an` |
+| **Marketing** | `{PREFIX}_MARKETING` | **Redacted** (completely hidden) | `*REDACTED*` |
+
+**Note**: Role names are automatically prefixed with your chosen deployment prefix (e.g., `DEMO_AUDITOR`) to avoid conflicts.
 
 ### Masking Policy Behavior
 
@@ -111,9 +129,9 @@ The solution supports three role-based access levels:
 USE DATABASE demo_database;
 SELECT customer_id, first_name, email FROM demo_customer_data LIMIT 1;
 
--- AUDITOR sees:           CUST00001 | Jonathan | jonathan.anderson@example.com
--- CUSTOMER_SERVICE sees:  CUST00001 | J****an  | j****an.a*****on@example.com  
--- MARKETING sees:         CUST00001 | TOKEN_xyz | TOKEN_abc
+-- DEMO_AUDITOR sees:           CUST00001 | Jonathan | jonathan.anderson@example.com
+-- DEMO_CUSTOMER_SERVICE sees:   CUST00001 | J***an   | j***@example.com  
+-- DEMO_MARKETING sees:          CUST00001 | *REDACTED* | *REDACTED*
 ```
 
 **Role Switching**: Snowflake role changes take effect immediately within the session.
@@ -151,10 +169,60 @@ sequenceDiagram
 
 ### Key Components
 
-- **API Integration**: `SKYFLOW_API_INTEGRATION` → External API Gateway for Skyflow
-- **External Functions**: `{prefix}_skyflow_detokenize()` - handles Skyflow API calls
-- **Masking Policies**: `{prefix}_pii_mask` - applied at column level with role-based logic
-- **Role-based UDF**: `{prefix}_skyflow_conditional_detokenize()` - orchestrates role logic
+- **CTAS+SWAP Tokenization**: `{prefix}_TOKENIZE_TABLE` stored procedure using atomic table swapping for zero downtime
+- **External Access Integration**: `{PREFIX}_SKYFLOW_EXTERNAL_ACCESS_INTEGRATION` → Secure network access to Skyflow APIs
+- **Unified External Function**: `{prefix}_skyflow_detokenize(token, mode, user_context)` - single function handles all redaction modes
+- **Masking Policies**: `{prefix}_pii_mask` - column-level policies with role-based access control
+- **Network Rules**: Restricts external access to authorized Skyflow vault domains only
+- **Secrets Management**: Skyflow PAT token stored securely as Snowflake secret
+- **Batch Processing**: Configurable batch sizes (default: 25) with deterministic row ordering
+
+## Tokenization Architecture
+
+### CTAS+SWAP Approach
+
+The solution uses a high-performance **CTAS+SWAP** (CREATE TABLE AS SELECT + SWAP) approach for tokenizing existing data:
+
+```mermaid
+flowchart TD
+    A[Original Table] --> B[Create Deterministic Snapshot]
+    B --> C[Create Token Staging Table]
+    C --> D[Process PII Columns in Batches]
+    D --> E[Call Skyflow API]
+    E --> F[Store Tokens by Row Number]
+    F --> G[CTAS: Build New Table with Tokens]
+    G --> H[Validate Row Counts]
+    H --> I[Atomic SWAP Operation]
+    I --> J[Drop Old Table Data]
+    J --> K[Cleanup Temp Tables]
+    
+    style I fill:#e1f5fe
+    style G fill:#f3e5f5
+```
+
+**Key Benefits:**
+- **Zero Downtime**: Atomic `ALTER TABLE SWAP` ensures continuous data availability
+- **Deterministic Processing**: Row numbers ensure consistent batch ordering and processing
+- **Transactional Safety**: All operations are atomic - either fully succeed or rollback
+- **Scalable**: Handles tables of any size with configurable batch processing
+- **Clean Environment**: Automatic cleanup of temporary tables and original plain-text data
+
+**Example Output:**
+```
+✓ CTAS+SWAP tokenization completed successfully
+📋 Result: CTAS+SWAP tokenization complete: 300 tokens via 12 API calls (50 total rows)
+```
+
+### Tokenization Process Steps
+
+1. **Deterministic Snapshot**: Create ordered snapshot with `ROW_NUMBER()` for consistent processing
+2. **Token Staging**: Create staging table to collect all tokens before final merge
+3. **Batch Processing**: Process each PII column in configurable batches (default: 25 values per API call)
+4. **API Calls**: Efficient Skyflow API calls with proper error handling and token extraction
+5. **CTAS Build**: Create new table using `COALESCE(token, original_value)` for complete data
+6. **Validation**: Verify row counts match between original and new tables
+7. **Atomic Swap**: Use `ALTER TABLE SWAP` for zero-downtime replacement
+8. **Cleanup**: Drop temporary tables and original plain-text data
 
 ## Python CLI Usage
 
@@ -195,27 +263,31 @@ The user running this solution needs the following Snowflake permissions:
 | **Warehouse** | `USAGE` | Query execution |
 
 #### Required Roles ✨ **Auto-Created**
-The solution automatically creates these Snowflake roles during deployment:
-- `AUDITOR` - Users who see detokenized (plain text) data
-- `CUSTOMER_SERVICE` - Users who see masked data (e.g., `J****an`)  
-- `MARKETING` - Users who see only tokens
+The solution automatically creates these prefixed Snowflake roles during deployment:
+- `{PREFIX}_AUDITOR` - Users who see detokenized (plain text) data
+- `{PREFIX}_CUSTOMER_SERVICE` - Users who see masked data (e.g., `J***an`)  
+- `{PREFIX}_MARKETING` - Users who see redacted data (`*REDACTED*`)
 
 **✅ No Manual Setup Required**: The `python setup.py create demo` command automatically:
-- Creates all required roles if they don't exist
+- Creates all required prefixed roles if they don't exist
 - Grants database access permissions to each role  
-- Sets up proper access control for the integration
+- Sets up masking policy references with proper role names
+- Validates role-based access with test queries
 
 #### Role Assignment (After Setup)
 ```sql
--- Grant roles to users (run as SECURITYADMIN or user with privileges)
-GRANT ROLE AUDITOR TO USER your_auditor_user;
-GRANT ROLE CUSTOMER_SERVICE TO USER your_service_user; 
-GRANT ROLE MARKETING TO USER your_marketing_user;
+-- Grant prefixed roles to users (run as SECURITYADMIN or user with privileges)
+GRANT ROLE DEMO_AUDITOR TO USER your_auditor_user;
+GRANT ROLE DEMO_CUSTOMER_SERVICE TO USER your_service_user; 
+GRANT ROLE DEMO_MARKETING TO USER your_marketing_user;
 
 -- Allow yourself to test different roles
-GRANT ROLE AUDITOR TO USER your_current_user;
-GRANT ROLE CUSTOMER_SERVICE TO USER your_current_user;
+GRANT ROLE DEMO_AUDITOR TO USER your_current_user;
+GRANT ROLE DEMO_CUSTOMER_SERVICE TO USER your_current_user;
+GRANT ROLE DEMO_MARKETING TO USER your_current_user;
 ```
+
+**Note**: Replace `DEMO` with your actual deployment prefix.
 
 
 #### Permission Validation
@@ -236,8 +308,8 @@ python setup.py config-test
 |-------|--------|----------|
 | `PERMISSION_DENIED: User does not have CREATE DATABASE` | Missing SYSADMIN rights | Grant `SYSADMIN` or `ACCOUNTADMIN` role |
 | `INVALID_STATE: Cannot create secret` | Missing secrets permissions | Ensure role has `CREATE SECRET` privilege |
-| `PERMISSION_DENIED: CREATE API INTEGRATION` | Missing integration permissions | Ensure role has `CREATE INTEGRATION` privilege |
-| `Role 'AUDITOR' not found` | Roles not created yet | Run `python setup.py create demo` to create roles automatically |
+| `Role 'DEMO_AUDITOR' not found` | Prefixed roles not created yet | Run `python setup.py create demo` to create roles automatically |
+| `Invalid OAuth access token` | PAT token expired | Update `SKYFLOW_PAT_TOKEN` in `.env.local` |
 
 ### Project Structure
 
@@ -277,38 +349,51 @@ SKYFLOW_TABLE=pii
 SKYFLOW_TABLE_COLUMN=pii_values
 SKYFLOW_BATCH_SIZE=25
 
-# Role Mappings (used by masking policies)
-PLAIN_TEXT_GROUPS=auditor           # See real data
-MASKED_GROUPS=customer_service      # See masked data (e.g., J****an)  
-REDACTED_GROUPS=marketing           # See tokens only
+# Role Mappings for Data Access Control (automatically prefixed)
+PLAIN_TEXT_GROUPS=AUDITOR                   # See detokenized data
+MASKED_GROUPS=CUSTOMER_SERVICE              # See masked data (e.g., J***an)  
+REDACTED_GROUPS=MARKETING                   # See redacted data (*REDACTED*)
 ```
 
 #### Snowflake Resources Setup
 
 The solution creates these Snowflake resources:
 
-- **Database**: `{prefix}_database` with schema
-- **Roles**: AUDITOR, CUSTOMER_SERVICE, MARKETING with appropriate permissions
-- **Secrets**: Skyflow credentials stored as Snowflake secrets
-- **API Integration**: `SKYFLOW_API_INTEGRATION` for external functions
-- **External Functions**: For Skyflow API communication
-- **Masking Policies**: Applied to sensitive columns with role-based logic
-- **Stored Procedures**: For tokenization operations
+- **Database**: `{prefix}_database` with PUBLIC schema
+- **Prefixed Roles**: `{PREFIX}_AUDITOR`, `{PREFIX}_CUSTOMER_SERVICE`, `{PREFIX}_MARKETING`
+- **Secrets**: `SKYFLOW_PAT_TOKEN` stored securely as Snowflake secret
+- **External Access Integration**: `{PREFIX}_SKYFLOW_EXTERNAL_ACCESS_INTEGRATION` with network rules
+- **Unified External Function**: `{prefix}_skyflow_detokenize(token, mode, user_context)`
+- **Masking Policies**: `{prefix}_pii_mask` applied to 6 PII columns with role-based access logic
+- **Stored Procedures**: `{prefix}_TOKENIZE_TABLE` for batch tokenization operations
+- **Role Validation**: Comprehensive testing during setup to ensure proper access control
 
 ## Development
 
 ### Adding New PII Columns
 
-1. **Update tokenization**: Edit `skyflow_snowflake/snowflake_ops/notebooks.py` to include new columns in stored procedures
-2. **Add masking policies**: Edit `skyflow_snowflake/templates/sql/setup/apply_column_masks.sql`
-3. **Redeploy**: `python setup.py recreate demo`
+1. **Update tokenization procedure**: Edit `skyflow_snowflake/snowflake_ops/notebooks.py`:
+   - Add new column names to the `pii_columns` list in the CTAS+SWAP procedure
+   - The CTAS+SWAP approach will automatically handle the new columns
+
+2. **Add masking policies**: Edit `skyflow_snowflake/templates/sql/setup/apply_column_masks.sql`:
+   - Add `ALTER TABLE` statements for new columns using the same `{prefix}_pii_mask` policy
+
+3. **Update table schema**: Edit `skyflow_snowflake/templates/sql/setup/create_sample_table.sql`:
+   - Add new PII column definitions to the table structure
+   - Add sample data generation for the new columns
+
+4. **Redeploy**: `python setup.py destroy demo && python setup.py create demo`
 
 #### CLI Features
 
 - **Snowflake Connector Integration**: Uses official Snowflake Python connector
+- **CTAS+SWAP Tokenization**: High-performance atomic tokenization with zero downtime
+- **Scalable Batch Processing**: Handles large datasets with configurable batch sizes
 - **Better Error Handling**: Detailed error messages and automatic retry logic
 - **Progress Indicators**: Visual progress bars for long-running operations
 - **Rich Output**: Colored, formatted output for better readability
+- **Reliable Role Management**: Consistent uppercase role name handling for dependable access control
 
 ### Dashboard Integration
 
@@ -320,7 +405,21 @@ The included dashboard demonstrates real-time role-based data access with custom
 python setup.py destroy demo
 ```
 
-Removes all Snowflake resources: database, roles, API integrations, secrets, functions, masking policies, stored procedures, and dashboard views.
+Comprehensively removes all Snowflake resources with validation:
+
+**✅ Complete Cleanup Process:**
+1. **Dashboard removal** - Customer insights dashboard and views  
+2. **Stored procedure deletion** - Tokenization procedures
+3. **Masking policy removal** - Unsets policies from all columns, then drops policies
+4. **Function cleanup** - Drops all external functions
+5. **Table deletion** - Sample data tables  
+6. **Network rules cleanup** - External access integrations and network rules
+7. **Database removal** - Complete database with CASCADE option
+8. **Integration cleanup** - API integrations and external access configurations  
+9. **Role deletion** - All prefixed roles created during setup
+10. **Secrets cleanup** - Skyflow PAT token and other stored secrets
+
+**✅ Validation**: Each step includes verification to ensure resources are actually removed.
 
 ## Support
 

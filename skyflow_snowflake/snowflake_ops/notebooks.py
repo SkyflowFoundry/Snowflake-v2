@@ -1,8 +1,5 @@
 """Stored procedure operations - Snowflake stored procedures for tokenization tasks."""
 
-import time
-from pathlib import Path
-from typing import Optional, List
 import snowflake.connector
 from snowflake.connector.errors import Error as SnowflakeError
 from rich.console import Console
@@ -20,7 +17,7 @@ class StoredProcedureManager:
         self.wrapper = SnowflakeClientWrapper(connection)
     
     def create_tokenization_procedure(self, prefix: str, substitutions: dict = None, batch_size: int = None) -> bool:
-        """Create Snowflake stored procedure for tokenization using Python and real Skyflow API."""
+        """Create Snowflake stored procedure using CTAS + SWAP approach for tokenization."""
         try:
             procedure_name = f"{prefix}_TOKENIZE_TABLE"
             database_name = f"{prefix}_database"
@@ -34,13 +31,13 @@ class StoredProcedureManager:
             skyflow_table = substitutions.get('SKYFLOW_TABLE', 'pii')
             table_column = substitutions.get('SKYFLOW_TABLE_COLUMN')
             
-            # Create Python stored procedure that makes real Skyflow API calls
+            # Create Python stored procedure using CTAS + SWAP approach
             procedure_sql = f"""
             CREATE OR REPLACE PROCEDURE {database_name}.PUBLIC.{procedure_name}()
             RETURNS STRING
             LANGUAGE PYTHON
             RUNTIME_VERSION = 3.12
-            HANDLER = 'tokenize_table_handler'
+            HANDLER = 'ctas_swap_tokenize_handler'
             EXTERNAL_ACCESS_INTEGRATIONS = ({prefix}_SKYFLOW_EXTERNAL_ACCESS_INTEGRATION)
             SECRETS = ('skyflow_pat_token' = SKYFLOW_PAT_TOKEN)
             PACKAGES = ('requests', 'snowflake-snowpark-python')
@@ -50,79 +47,98 @@ import requests
 import _snowflake
 from snowflake.snowpark import Session
 
-def tokenize_table_handler(snowpark_session):
-    \"\"\"Tokenize PII data in customer table using real Skyflow API.\"\"\"
+def ctas_swap_tokenize_handler(snowpark_session):
+    # CTAS + SWAP approach for Skyflow tokenization - clean, atomic, scalable
     
     try:
-        # Get PAT token from secret, use substituted values for the rest
+        # Get configuration
         pat_token = _snowflake.get_generic_secret_string('skyflow_pat_token')
         vault_host = "{vault_host}"
         vault_id = "{vault_id}" 
         skyflow_table = "{skyflow_table}"
         table_column = "{table_column}"
         
-        # Configuration
-        table_name = '{prefix}_customer_data'
+        # Table configuration
+        source_table = '{prefix}_database.PUBLIC.{prefix}_customer_data'
+        snap_table = 'SNAP_CUSTOMER'  # temp table, unqualified
+        staging_table = 'TOK_ALL'     # temp table, unqualified
+        new_table = '{prefix}_database.PUBLIC.{prefix}_customer_data_NEW'
+        
         batch_size = {batch_size}
         
-        # Skyflow API configuration (using correct vault host from SKYFLOW_VAULT_URL)
+        # Skyflow API configuration
         tokenize_url = f"https://{{vault_host}}/v1/vaults/{{vault_id}}/{{skyflow_table}}"
-        
         headers = {{
             "Authorization": f"Bearer {{pat_token}}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }}
         
-        # Get total row count
-        count_df = snowpark_session.sql(f"SELECT COUNT(*) as count FROM {{table_name}}")
-        count_result = count_df.collect()
-        total_rows = count_result[0]['COUNT']
-        
-        if total_rows == 0:
-            return f"No data found in table {{table_name}}"
-        
-        processed = 0
+        # PII columns to tokenize
         pii_columns = ['first_name', 'last_name', 'email', 'phone_number', 'address', 'date_of_birth']
         
-        # Process in batches following Databricks pattern
-        for offset in range(0, total_rows, batch_size):
-            # Get batch of data
-            batch_df = snowpark_session.sql(f\"\"\"
-                SELECT customer_id, {{', '.join(pii_columns)}}
-                FROM {{table_name}}
-                ORDER BY customer_id
-                LIMIT {{batch_size}} OFFSET {{offset}}
+        # Step 1: Create deterministic snapshot with row numbers (using TRANSIENT)
+        snapshot_sql = f\"\"\"
+        CREATE OR REPLACE TRANSIENT TABLE {{snap_table}} AS
+        SELECT 
+            ROW_NUMBER() OVER (ORDER BY customer_id, email, total_purchases, created_at) AS rn,
+            t.*
+        FROM {{source_table}} t
+        WHERE {{' OR '.join([f'{{col}} IS NOT NULL' for col in pii_columns])}}
+        \"\"\"
+        
+        snowpark_session.sql(snapshot_sql).collect()
+        
+        # Get total rows to process
+        count_df = snowpark_session.sql(f"SELECT COUNT(*) as count FROM {{snap_table}}")
+        total_rows = count_df.collect()[0]['COUNT']
+        
+        if total_rows == 0:
+            return "No rows to tokenize"
+        
+        # Step 2: Create staging table for tokens (using TRANSIENT)
+        staging_columns = ', '.join([f'{{col}}_token STRING' for col in pii_columns])
+        staging_sql = f\"\"\"
+        CREATE OR REPLACE TRANSIENT TABLE {{staging_table}} (
+            rn NUMBER,
+            {{staging_columns}}
+        )
+        \"\"\"
+        
+        snowpark_session.sql(staging_sql).collect()
+        
+        # Step 3: Process each column's tokens by reading snapshot in rn order
+        total_api_calls = 0
+        total_tokens_processed = 0
+        
+        for col in pii_columns:
+            # Get all non-null values for this column in rn order
+            values_df = snowpark_session.sql(f\"\"\"
+                SELECT rn, {{col}} as pii_value
+                FROM {{snap_table}}
+                WHERE {{col}} IS NOT NULL AND TRIM({{col}}) != ''
+                ORDER BY rn
             \"\"\")
             
-            batch_data = batch_df.collect()
+            values_data = values_df.collect()
+            if not values_data:
+                continue
+                
+            # Tokenize in batches and collect all tokens
+            column_tokens = []  # List of (rn, token) tuples
             
-            if not batch_data:
-                continue  # Skip empty batches
-            
-            # For each PII column, tokenize the values
-            for col in pii_columns:
-                # Prepare records for tokenization (following Databricks pattern)
+            for batch_start in range(0, len(values_data), batch_size):
+                batch_end = min(batch_start + batch_size, len(values_data))
+                batch_data = values_data[batch_start:batch_end]
+                
+                # Prepare Skyflow API payload
                 skyflow_records = []
-                row_mapping = {{}}
+                for row in batch_data:
+                    skyflow_records.append({{
+                        "fields": {{table_column: str(row['PII_VALUE'])}}
+                    }})
                 
-                for i, row in enumerate(batch_data):
-                    # Check if row has the expected columns
-                    if not hasattr(row, col.upper()) and col.upper() not in row:
-                        continue
-                    
-                    value = row[col.upper()]  # Snowflake returns uppercase column names
-                    if value is not None and str(value).strip() != '':
-                        skyflow_records.append({{
-                            "fields": {{table_column: str(value)}}
-                        }})
-                        row_mapping[len(skyflow_records) - 1] = (row['CUSTOMER_ID'], col)
-                
-                # Skip if no values to tokenize
-                if not skyflow_records:
-                    continue
-                
-                # Call Skyflow tokenization API
+                # Call Skyflow API
                 payload = {{
                     "records": skyflow_records,
                     "tokenization": True
@@ -130,52 +146,119 @@ def tokenize_table_handler(snowpark_session):
                 
                 response = requests.post(tokenize_url, json=payload, headers=headers, timeout=30)
                 response.raise_for_status()
-                
                 result = response.json()
                 
-                # Debug: Log the actual API response structure
                 if not result or 'records' not in result:
-                    return f"Unexpected API response structure: {{str(result)[:300]}}"
+                    return f"Skyflow API error for {{col}}: " + str(result)[:200]
                 
-                if 'records' in result:
-                    # Update table with tokens
-                    for record_idx, token_record in enumerate(result['records']):
-                        if record_idx in row_mapping:
-                            row_id, column_name = row_mapping[record_idx]
-                            # Handle Skyflow tokenization response format
-                            if 'tokens' in token_record and table_column in token_record['tokens']:
-                                # Standard Skyflow tokenization response format
-                                token = token_record['tokens'][table_column]
-                            elif 'fields' in token_record and table_column in token_record['fields']:
-                                # Alternative response format with fields wrapper
-                                token = token_record['fields'][table_column]
-                            elif 'token' in token_record:
-                                # Direct token field
-                                token = token_record['token']
-                            elif table_column in token_record:
-                                # Token under table column name
-                                token = token_record[table_column]
-                            else:
-                                # Log the actual response structure for debugging
-                                return f"Unexpected token record format: {{str(token_record)[:300]}} - Available keys: {{list(token_record.keys())}}"
-                            
-                            # Update the specific row and column with token
-                            update_sql = f\"\"\"
-                                UPDATE {{table_name}}
-                                SET {{column_name}} = ?
-                                WHERE customer_id = ?
-                            \"\"\"
-                            snowpark_session.sql(update_sql, [token, row_id]).collect()
-                            
+                # Extract tokens and pair with rn
+                for i, token_record in enumerate(result['records']):
+                    if i >= len(batch_data):
+                        break
+                        
+                    rn = batch_data[i]['RN']
+                    token = None
+                    
+                    # Extract token from response
+                    if 'tokens' in token_record and table_column in token_record['tokens']:
+                        token = token_record['tokens'][table_column]
+                    elif 'fields' in token_record and table_column in token_record['fields']:
+                        token = token_record['fields'][table_column]
+                    elif 'token' in token_record:
+                        token = token_record['token']
+                    elif table_column in token_record:
+                        token = token_record[table_column]
+                    
+                    if token:
+                        column_tokens.append((rn, token))
+                
+                total_api_calls += 1
             
-            processed += len(batch_data)
+            # Insert tokens for this column into staging table
+            if column_tokens:
+                # Build INSERT statement with token data
+                token_values = []
+                for rn, token in column_tokens:
+                    escaped_token = str(token).replace("'", "''")
+                    token_values.append(f"({{rn}}, '{{escaped_token}}')")
+                
+                if token_values:
+                    # Use MERGE to insert/update tokens by rn
+                    merge_sql = f\"\"\"
+                    MERGE INTO {{staging_table}} AS target
+                    USING (
+                        SELECT * FROM VALUES {{', '.join(token_values)}} AS t(rn, token)
+                    ) AS source
+                    ON target.rn = source.rn
+                    WHEN MATCHED THEN UPDATE SET {{col}}_token = source.token
+                    WHEN NOT MATCHED THEN INSERT (rn, {{col}}_token) VALUES (source.rn, source.token)
+                    \"\"\"
+                    
+                    snowpark_session.sql(merge_sql).collect()
+                    total_tokens_processed += len(column_tokens)
         
-        return f"Tokenized {{processed}} rows in batches of {{batch_size}}"
+        # Step 4: Build new table with CTAS using COALESCE for token fallback
+        coalesce_columns = []
+        coalesce_columns.append('s.customer_id')
+        
+        for col in pii_columns:
+            coalesce_columns.append(f'COALESCE(stg.{{col}}_token, s.{{col}}) AS {{col}}')
+        
+        # Add all other non-PII columns
+        other_columns = [
+            's.signup_date', 's.last_login', 's.total_purchases', 's.total_spent',
+            's.loyalty_status', 's.preferred_language', 's.consent_marketing', 
+            's.consent_data_sharing', 's.created_at', 's.updated_at'
+        ]
+        coalesce_columns.extend(other_columns)
+        
+        ctas_sql = f\"\"\"
+        CREATE OR REPLACE TABLE {{new_table}} AS
+        SELECT
+            {{',\\n            '.join(coalesce_columns)}}
+        FROM {{snap_table}} s
+        LEFT JOIN {{staging_table}} stg USING (rn)
+        \"\"\"
+        
+        snowpark_session.sql(ctas_sql).collect()
+        
+        # Step 5: Validation before SWAP
+        validation_df = snowpark_session.sql(f\"\"\"
+        SELECT 
+            (SELECT COUNT(*) FROM {{source_table}}) AS old_rows,
+            (SELECT COUNT(*) FROM {{new_table}}) AS new_rows
+        \"\"\")
+        
+        validation_result = validation_df.collect()[0]
+        old_rows = validation_result['OLD_ROWS']
+        new_rows = validation_result['NEW_ROWS']
+        
+        if old_rows != new_rows:
+            return f"Validation failed: row count mismatch ({{old_rows}} -> {{new_rows}})"
+        
+        # Step 6: Atomic SWAP
+        swap_sql = f\"ALTER TABLE {{source_table}} SWAP WITH {{new_table}}\"
+        snowpark_session.sql(swap_sql).collect()
+        
+        # Step 7: Drop the _NEW table (which now contains original plain-text data)
+        try:
+            snowpark_session.sql(f\"DROP TABLE IF EXISTS {{new_table}}\").collect()
+        except Exception:
+            pass  # Ignore cleanup errors
+        
+        # Step 8: Cleanup transient tables
+        try:
+            snowpark_session.sql(f\"DROP TABLE IF EXISTS {{snap_table}}\").collect()
+            snowpark_session.sql(f\"DROP TABLE IF EXISTS {{staging_table}}\").collect()
+        except Exception:
+            pass  # Ignore cleanup errors
+        
+        return f"CTAS+SWAP tokenization complete: {{total_tokens_processed}} tokens via {{total_api_calls}} API calls ({{new_rows}} total rows)"
         
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        return f"Tokenization failed: {{str(e)}} - Details: {{error_details[:500]}}"
+        return f"CTAS+SWAP tokenization failed: {{str(e)}} - Details: {{error_details[:500]}}"
 $$
             """
             
@@ -187,7 +270,7 @@ $$
             
             self.wrapper.execute_with_retry(create_proc)
             cursor.close()
-            console.print(f"✓ Created stored procedure: {procedure_name}")
+            console.print(f"✓ Created CTAS+SWAP tokenization procedure: {procedure_name}")
             return True
             
         except SnowflakeError as e:
@@ -195,31 +278,31 @@ $$
             return False
     
     def execute_tokenization_procedure(self, prefix: str) -> bool:
-        """Execute the tokenization stored procedure."""
+        """Execute the CTAS+SWAP tokenization stored procedure synchronously (blocking)."""
         try:
             database_name = f"{prefix}_database"
             procedure_name = f"{database_name}.PUBLIC.{prefix}_TOKENIZE_TABLE"
             
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Running tokenization procedure...", total=None)
-                
-                cursor = self.connection.cursor()
-                
-                def execute_proc():
-                    cursor.execute(f"CALL {procedure_name}()")
-                    result = cursor.fetchone()
-                    return result[0] if result else "Completed"
-                
-                result_message = self.wrapper.execute_with_retry(execute_proc)
-                cursor.close()
-                
-                progress.update(task, description=f"✓ Tokenization completed: {result_message}")
+            cursor = self.connection.cursor()
             
-            console.print(f"✓ Tokenization procedure executed successfully")
+            # Execute synchronously and wait for completion
+            console.print(f"🚀 Starting CTAS+SWAP tokenization procedure: {procedure_name}")
+            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                task = progress.add_task("Tokenizing data with CTAS+SWAP approach...", total=None)
+                
+                cursor.execute(f"CALL {procedure_name}()")
+                result = cursor.fetchone()
+                
+                progress.update(task, description="✓ Tokenization completed")
+            
+            cursor.close()
+            
+            if result and result[0]:
+                console.print(f"✓ CTAS+SWAP tokenization completed successfully")
+                console.print(f"📋 Result: {result[0]}")
+            else:
+                console.print("⚠ Tokenization completed but no result returned")
+            
             return True
             
         except SnowflakeError as e:

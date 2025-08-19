@@ -2,7 +2,7 @@
 
 import os
 from typing import Dict, Optional
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, ValidationError
 import snowflake.connector
 from .env_loader import EnvLoader
 
@@ -159,7 +159,7 @@ class SetupConfig:
             "MASKED_GROUPS": self.groups.masked_groups,
             "REDACTED_GROUPS": self.groups.redacted_groups,
             # Add prefixed role names for SQL templates
-            "PREFIXED_PLAIN_TEXT_ROLE": f"{prefix}_{self.groups.plain_text_groups.upper()}",
-            "PREFIXED_MASKED_ROLE": f"{prefix}_{self.groups.masked_groups.upper()}",
-            "PREFIXED_REDACTED_ROLE": f"{prefix}_{self.groups.redacted_groups.upper()}"
+            "PREFIXED_PLAIN_TEXT_ROLE": f"{prefix}_{self.groups.plain_text_groups.upper()}".upper(),
+            "PREFIXED_MASKED_ROLE": f"{prefix}_{self.groups.masked_groups.upper()}".upper(),
+            "PREFIXED_REDACTED_ROLE": f"{prefix}_{self.groups.redacted_groups.upper()}".upper()
         }

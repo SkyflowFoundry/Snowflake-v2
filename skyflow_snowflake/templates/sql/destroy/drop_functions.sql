@@ -4,9 +4,8 @@
 USE DATABASE ${PREFIX}_database;
 USE SCHEMA ${SCHEMA};
 
--- Drop the functions (match actual function signatures)
-DROP FUNCTION IF EXISTS ${PREFIX}_skyflow_detokenize(VARCHAR);
-DROP FUNCTION IF EXISTS ${PREFIX}_skyflow_detokenize_masked(VARCHAR);
+-- Drop the functions (current signatures only)
+DROP FUNCTION IF EXISTS ${PREFIX}_skyflow_detokenize(VARCHAR, VARCHAR, VARCHAR);
 DROP FUNCTION IF EXISTS ${PREFIX}_skyflow_conditional_detokenize(VARCHAR);
 DROP FUNCTION IF EXISTS ${PREFIX}_skyflow_mask_detokenize(VARCHAR);
 
