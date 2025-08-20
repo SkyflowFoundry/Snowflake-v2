@@ -48,7 +48,6 @@ This solution provides secure data tokenization and detokenization capabilities 
    # SNOWFLAKE_PAT_TOKEN=your-pat-token    # Alternative to password
    
    SNOWFLAKE_WAREHOUSE=your-warehouse
-   SNOWFLAKE_DATABASE=your-database
    SNOWFLAKE_SCHEMA=PUBLIC
    SNOWFLAKE_ROLE=SYSADMIN
    
@@ -337,7 +336,6 @@ SNOWFLAKE_PASSWORD=your-password
 # SNOWFLAKE_PAT_TOKEN=your-pat-token    # Alternative to password
 
 SNOWFLAKE_WAREHOUSE=your-warehouse
-SNOWFLAKE_DATABASE=your-database
 SNOWFLAKE_SCHEMA=PUBLIC
 SNOWFLAKE_ROLE=SYSADMIN
 

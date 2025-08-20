@@ -15,7 +15,6 @@ class SnowflakeConfig(BaseModel):
     account: str
     user: str
     warehouse: str
-    database: str
     schema_name: str = "PUBLIC"
     role: Optional[str] = None
     # Authentication - use either password OR pat_token OR oauth
@@ -92,7 +91,6 @@ class SetupConfig:
                 'account': config.account,
                 'user': config.user,
                 'warehouse': config.warehouse,
-                'database': config.database,
                 'schema': config.schema_name,
                 'role': config.role,
                 # Network timeout and retry parameters
@@ -144,7 +142,6 @@ class SetupConfig:
         """Get variable substitutions for SQL templates."""
         return {
             "PREFIX": prefix,
-            "DATABASE": self.snowflake.database,
             "SCHEMA": self.snowflake.schema_name,
             "WAREHOUSE": self.snowflake.warehouse,
             # Add prefix-specific database name for SQL templates

@@ -30,7 +30,6 @@ class EnvLoader:
             "password": os.getenv("SNOWFLAKE_PASSWORD"),
             "pat_token": os.getenv("SNOWFLAKE_PAT_TOKEN"),
             "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
-            "database": os.getenv("SNOWFLAKE_DATABASE"),
             "schema_name": os.getenv("SNOWFLAKE_SCHEMA", "PUBLIC"),
             "role": os.getenv("SNOWFLAKE_ROLE")
         }
@@ -67,7 +66,6 @@ class EnvLoader:
             "snowflake_user": snowflake["user"] is not None,
             "snowflake_auth": has_auth,  # Either password or PAT token required
             "snowflake_warehouse": snowflake["warehouse"] is not None,
-            "snowflake_database": snowflake["database"] is not None,
             "skyflow_vault_url": skyflow["vault_url"] is not None,
             "skyflow_vault_id": skyflow["vault_id"] is not None,
             "skyflow_pat_token": skyflow["pat_token"] is not None,
